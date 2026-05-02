@@ -31,6 +31,8 @@ export default function DomainsPage() {
   const [name, setName] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [scanningId, setScanningId] = useState<string | null>(null);
 
   function load() {
     api<Domain[]>('/domains').then(setDomains).catch((e: Error) => setErr(e.message));
@@ -49,30 +51,49 @@ export default function DomainsPage() {
     e.preventDefault();
     setErr('');
     setMsg('');
+    setAdding(true);
     try {
       const res = await api<{ discovery?: string }>('/domains', {
         method: 'POST',
         body: JSON.stringify({ name }),
       });
       setName('');
-      setMsg(res.discovery || 'Domain added.');
+      setMsg(
+        res.discovery ||
+          'Domain added. Discovery runs in the background (crt.sh can take ~30–60s). Refresh Subdomains shortly.',
+      );
       load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setAdding(false);
     }
   }
 
   async function scan(id: string) {
     setErr('');
+    setScanningId(id);
     try {
       await api(`/domains/${id}/scan`, { method: 'POST' });
-      setMsg('Discovery queued (crt.sh results are best-effort).');
+      setMsg(
+        'Discovery started in the background (crt.sh often takes 30–60s). Open Subdomains and refresh in a moment.',
+      );
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setScanningId(null);
     }
   }
 
-  if (!hydrated) return null;
+  if (!hydrated) {
+    return (
+      <div className="space-y-6 animate-pulse px-1">
+        <div className="h-8 w-48 rounded bg-zinc-800" />
+        <div className="h-24 rounded-xl bg-zinc-900/80" />
+        <div className="h-40 rounded-xl bg-zinc-900/80" />
+      </div>
+    );
+  }
   if (!getToken()) return null;
 
   return (
@@ -100,8 +121,8 @@ export default function DomainsPage() {
               className={`${field} mt-2`}
             />
           </div>
-          <button type="submit" className={`${btnPrimary} shrink-0`}>
-            Add domain
+          <button type="submit" disabled={adding} className={`${btnPrimary} shrink-0 disabled:opacity-50`}>
+            {adding ? 'Adding…' : 'Add domain'}
           </button>
         </form>
       </section>
@@ -141,8 +162,13 @@ export default function DomainsPage() {
                 <Link href={`/subdomains?domainId=${d._id}`} className={btnSecondary}>
                   Subdomains
                 </Link>
-                <button type="button" onClick={() => scan(d._id)} className={btnSecondary}>
-                  Trigger scan
+                <button
+                  type="button"
+                  disabled={scanningId !== null}
+                  onClick={() => scan(d._id)}
+                  className={`${btnSecondary} disabled:opacity-50`}
+                >
+                  {scanningId === d._id ? 'Starting…' : 'Trigger scan'}
                 </button>
               </div>
             </li>
